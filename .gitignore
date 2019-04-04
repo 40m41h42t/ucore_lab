@@ -23,3 +23,5 @@ disk0
 .vscode
 .gdb_history
 .udb
+labcodes/lab1/lab1.udb
+*.udb
