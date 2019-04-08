@@ -52,6 +52,7 @@ idt_init(void) {
         SETGATE(idt[i], 0, GD_KTEXT, __vectors[i], DPL_KERNEL);
     }
     SETGATE(idt[T_SYSCALL], 0, GD_KTEXT, __vectors[T_SYSCALL], DPL_USER);
+    SETGATE(idt[T_SWITCH_TOK], 0, GD_KTEXT, __vectors[T_SWITCH_TOK], DPL_USER);
     lidt(&idt_pd);
 }
 
@@ -129,6 +130,27 @@ print_trapframe(struct trapframe *tf) {
     }
 }
 
+static void
+lab1_switch_to_user(void) {
+    asm volatile(
+        "subl $0x08, %%esp \n"
+        "int %0 \n"
+        "movl %%ebp, %%esp \n"
+        :
+        : "i"(T_SWITCH_TOU)
+    );
+}
+
+static void
+lab1_switch_to_kernel(void) {
+    asm volatile(
+        "int %0 \n"
+        "movl %%ebp, %%esp \n"
+        :
+        : "i"(T_SWITCH_TOK)
+    );
+}
+
 void
 print_regs(struct pushregs *regs) {
     cprintf("  edi  0x%08x\n", regs->reg_edi);
@@ -161,6 +183,18 @@ trap_dispatch(struct trapframe *tf) {
         break;
     case IRQ_OFFSET + IRQ_COM1:
         c = cons_getc();
+        switch (c)
+        {
+            case '3':
+                lab1_switch_to_user();
+                print_trapframe(tf);
+                break;
+            case '0':
+                lab1_switch_to_kernel();
+                print_trapframe(tf);
+            default:
+                break;
+        }
         cprintf("serial [%03d] %c\n", c, c);
         break;
     case IRQ_OFFSET + IRQ_KBD:
@@ -169,9 +203,21 @@ trap_dispatch(struct trapframe *tf) {
         break;
     //LAB1 CHALLENGE 1 : YOUR CODE you should modify below codes.
     case T_SWITCH_TOU:
-    case T_SWITCH_TOK:
-        panic("T_SWITCH_** ??\n");
+        if((tf->tf_cs & DPL_USER) != DPL_USER){
+            tf->tf_ds = tf->tf_es = tf->tf_fs = tf->tf_gs = tf->tf_ss = USER_DS;
+            tf->tf_cs = USER_CS;
+            tf->tf_eflags |= FL_IOPL_MASK;
+        }
         break;
+    case T_SWITCH_TOK:
+        if((tf->tf_cs & DPL_USER) !=  DPL_KERNEL){
+            tf->tf_ds = tf->tf_es = tf->tf_fs = tf->tf_gs = tf->tf_ss = KERNEL_DS;
+            tf->tf_cs = KERNEL_CS;
+            tf->tf_eflags &= ~(FL_IOPL_MASK);
+        }
+        break;
+        // panic("T_SWITCH_** ??\n");
+        // break;
     case IRQ_OFFSET + IRQ_IDE1:
     case IRQ_OFFSET + IRQ_IDE2:
         /* do nothing */
